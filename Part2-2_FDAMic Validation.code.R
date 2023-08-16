@@ -1,7 +1,6 @@
 ###########validate the FDAMic using independent datasets (Morabito et al)###########################
 library(Seurat)
 library(harmony) #0.1.1
-library(DoubletFinder)
 library(plyr)
 library(RColorBrewer)
 library(ggplot2)
@@ -9,6 +8,7 @@ library(scCustomize)
 library(dplyr)
 library(viridis)
 library(ggrepel)
+library(monocle3)
 
 setwd("/data2/deng/Aging/Glia/scRNAseq/Morabito_GSE174367")
 #https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE174367
@@ -124,7 +124,6 @@ dev.off()
 saveRDS(MorabitoMic,file="Morabito_snRNA/Morabito_snRNA_Mic.rds")
 
 
-
 setwd("/Projects/deng/Alzheimer/syn18485175")
 MorabitoDataSet=readRDS("/data2/deng/Alzheimer/Microglia/Morabito_GSE174367/Morabito_snRNA/Morabito_snRNA.rds")
 tiff("Manuscript/Microglia/Graph/Part2/Morabito_cellType.tiff",width=450,height=400)
@@ -151,7 +150,6 @@ theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x =
 theme(panel.border = element_rect(fill=NA,color="black", size=1.5, linetype="solid"))
 dev.off()
 
-
 colors_list <- c("forestgreen","NavajoWhite","LightBlue", "SlateBlue", "Violet", "gold")
 markerGene=c("F13A1","MRC1","SPP1","P2RY12","CX3CR1","FCGR3A","VSIG4","CD14","RPS19","SPP1","C1QB","ARMC9","PLEKHA7","RPS24","FTH1","FTL")
 pdf("Manuscript/Microglia/Graph/Part2/Morabito_FDAMicMarker_VlnPlot.pdf",height=9,width=5)
@@ -159,6 +157,61 @@ scCustomize::Stacked_VlnPlot(seurat_object = Morabito_snRNA_Mic_Seurat, features
 theme(axis.title.x=element_blank())
 dev.off()
 
+
+MorabitoMic=Morabito_snRNA_Mic_Seurat
+MorabitoMic$SubType="Unsign"
+MorabitoMic$BraakStage=MorabitoMic$TangStage
+MorabitoMic$MicCluster="Unsign"
+MorabitoMic@meta.data=MorabitoMic@meta.data[,c("nCount_RNA","nFeature_RNA","percent_mito","MicCluster","Sample","Statues","SubType","Age","Gender","BraakStage")]
+data <- GetAssayData(object = MorabitoMic, slot = "counts")
+celldata <- as.data.frame(MorabitoMic@meta.data)
+genedata <- as.data.frame(x = row.names(MorabitoMic), row.names = row.names(MorabitoMic))
+colnames(genedata) <- "gene_short_name"
+MorabitoMic.cds <- new_cell_data_set(data, cell_metadata = celldata, gene_metadata = genedata)
+colData(MorabitoMic.cds)
+MorabitoMic.cds <- preprocess_cds(MorabitoMic.cds, num_dim = 20)
+pdf("Morabito_snRNA/Monocle/variance.pdf")
+plot_pc_variance_explained(MorabitoMic.cds)
+dev.off()
+MorabitoMic.cds <- align_cds(MorabitoMic.cds, alignment_group = "Sample") #significantly batch effect existed in
+#remember to cite Haghverdi L, Lun ATL, Morgan MD, Marioni JC (2018). 'Batch effects in single-cell RNA-sequencing data are corrected by matching mutual nearest neighbors.' Nat. Biotechnol., 36(5), 421-427. doi: 10.1038/nbt.4091
+MorabitoMic.cds <- reduce_dimension(MorabitoMic.cds,preprocess_method = 'Aligned')
+#MorabitoMic.cds <- reduce_dimension(MorabitoMic.cds,preprocess_method = 'PCA')
+MorabitoMic.cds = cluster_cells(cds = MorabitoMic.cds, resolution=0.005,reduction_method ='UMAP')
+MorabitoMic.cds$cluster=clusters(MorabitoMic.cds)
+
+#mapping UMAP embedding to seurat object
+all(colnames(MorabitoMic)==colnames(MorabitoMic.cds)) #TRUE
+MorabitoMic$MicCluster=clusters(MorabitoMic.cds)
+monocle_umap <- MorabitoMic.cds@int_colData@listData$reducedDims$UMAP
+colnames(monocle_umap) <- c('UMAP_1', 'UMAP_2')
+MorabitoMic@reductions$umap@cell.embeddings=monocle_umap
+pal <- viridis(n = 10, option = "D")
+geneList=c("F13A1","P2RY12","CX3CR1","VSIG4","CD14","FCGR3A","RPS19","SPP1","MOG","PLEKHA7")
+tiff("Morabito_snRNA/Monocle/Mic_Seurat__CellTypeMarkerDensity.tiff",height=1000,width=1000)
+Plot_Density_Custom(seurat_object = MorabitoMic, features = geneList, custom_palette = pal)&NoLegend()&
+theme(axis.text.x = element_blank(),axis.text.y = element_blank(),axis.title.x = element_blank(),axis.title.y = element_blank())&
+theme(panel.border = element_rect(fill=NA,color="black", size=1.5, linetype="solid"))
+dev.off()
+pdf("Morabito_snRNA/Monocle/Mic_Seurat_Order_subtypeMarker.pdf",width=5,height=6)
+Stacked_VlnPlot(seurat_object =MorabitoMic,group.by="MicCluster",plot_spacing = 0,features = geneList,x_lab_rotate = TRUE)
+dev.off()
+
+
+### defination the subytpe name for each subcluster ##############
+MorabitoMic$MicCluster=factor(MorabitoMic$MicCluster,levels=c(10,2,12,7,8,11,9,4,1,5,3,6,15,14,13))
+Idents(MorabitoMic)=MorabitoMic$MicCluster
+new.cluster.ids <- c("BAMic","HomMic","HomMic","HomMic","HomMic","HomMic","HomMic","HomMic","NorARMic","NorARMic","ARMic","FDAMic","FDAMic","DysMic","OliMic")
+names(new.cluster.ids) <- levels(MorabitoMic)
+MorabitoMic <- RenameIdents(MorabitoMic, new.cluster.ids)
+MorabitoMic$SubType=Idents(MorabitoMic)
+all(colnames(MorabitoMic)==colnames(MorabitoMic.cds)) 
+MorabitoMic.cds$subType=MorabitoMic$SubType
+saveRDS(MorabitoMic.cds,file="Morabito_snRNA/Monocle/Morabito_snRNA_Mic.monocle3.cds.rds")
+
+
+
+### visualization of the subtype of microgia from Morabito ##############
 Morabito_snRNA_Mic=readRDS("/data2/deng/Alzheimer/Microglia/Morabito_GSE174367/Morabito_snRNA/Monocle/Morabito_snRNA_Mic.monocle3.cds.rds")
 table(Morabito_snRNA_Mic$subType)
 #BAMic   HomMic NorARMic    ARMic   FDAMic   DysMic   OliMic
