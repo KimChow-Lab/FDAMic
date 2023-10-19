@@ -1,7 +1,11 @@
 library(monocle3)
 library(dplyr)
 library(Seurat)
+library(presto)
+library(tibble)
+library(dplyr)
 library(ggplot2)
+library(ggrepel)
 library(pheatmap)
 
 setwd("/Projects/deng/Alzheimer/syn18485175")
@@ -315,6 +319,7 @@ wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$pathol
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$pathology.group=="no-pathology","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$pathology.group=="late-pathology","Ratio"]) #p-value = 0.3827  #p-value = 0.3284
 
 #--------------check the DEGs affected by FDAMic--------------#
+setwd("/Projects/deng/Alzheimer/syn18485175")
 ADMic=readRDS("ADMic.rds")
 ADdeg <- wilcoxauc(subset(ADMic,Gender=="Female"), 'Statues')
 DEGBRmC7 <- ADdeg %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
@@ -322,12 +327,16 @@ DEGBRmC7$threshold = as.factor(ifelse(DEGBRmC7$pval < 0.01 & abs(DEGBRmC7$logFC)
 table(DEGBRmC7$threshold)
 #Down NoSignificant            Up
 #46         17853            27
+write.table(DEGBRmC7[DEGBRmC7$threshold%in%c('Up','Down'),],file="Manuscript/Microglia/Graph/Part2/DEGBRmC7.txt",sep="\t",quote=F,row.names=F)
+
 ADdeg <- wilcoxauc(subset(ADMic,Gender=="Female"& MicCluster %in% c(1:6,8:11)), 'Statues')
 DEGARmC7 <- ADdeg %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
 DEGARmC7$threshold = as.factor(ifelse(DEGARmC7$pval < 0.01 & abs(DEGARmC7$logFC) >= 0.25, ifelse(DEGARmC7$logFC >= 0.25 ,'Up','Down'),'NoSignificant'))
 table(DEGARmC7$threshold)
 #Down NoSignificant            Up
 # 33         17871            22
+write.table(DEGARmC7[DEGARmC7$threshold%in%c('Up','Down'),],file="Manuscript/Microglia/Graph/Part2/DEGARmC7.txt",sep="\t",quote=F,row.names=F)
+
 DEGBRmC7$Group="DEGBRmC7"
 DEGARmC7$Group="DEGARmC7"
 sigGeneB=DEGBRmC7[DEGBRmC7$threshold%in%c("Up","Down"),"feature"] #73
@@ -379,6 +388,71 @@ feature      logFC       pval     threshold
 APOE 0.21172482 0.05588783 NoSignificant
 RPS19 0.14530093 0.17257429 NoSignificant
 SPP1 0.02436593 0.93730403 NoSignificant
+
+
+#Reviewer2: to answer "Is this to be expected when any number of cells are removed"
+table(DEGBRmC7$threshold)
+#Down NoSignificant            Up
+#46         17853            27
+
+table(DEGARmC7$threshold)
+#Down NoSignificant            Up
+# 33         17871            22
+
+table(ADMic$SubType)
+#BAMic   HomMic NorARMic    ARMic   FDAMic   DysMic   OpcMic
+#158      998      154      136      148      117       24
+#randomly removed 148 genes from the total cells
+RandomCell=ncol(ADMic)-148
+
+PermutationNumber=1000
+DEGNumber=matrix(data = NA, nrow = PermutationNumber, ncol = 2, byrow = FALSE,dimnames = list(c(1:PermutationNumber),c("UpDEGNumber","DownDEGNumber")))
+for(i in c(1:PermutationNumber)){
+rm(.Random.seed)
+ADMicDownSampling=ADMic[, sample(colnames(ADMic), size = RandomCell, replace=F)]
+#table(ADMicDownSampling$SubType)
+ADRandomlydeg <- wilcoxauc(ADMicDownSampling, 'Statues')
+DEGARandomlyRm <- ADRandomlydeg %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
+DEGARandomlyRm$Pattern = as.factor(ifelse(DEGARandomlyRm$pval < 0.01 & abs(DEGARandomlyRm$logFC) >= 0.25, ifelse(DEGARandomlyRm$logFC >= 0.25 ,'Up','Down'),'NoSignificant'))
+DEGNumber[i,1]=nrow(DEGARandomlyRm[DEGARandomlyRm$Pattern%in%c("Up"),])
+DEGNumber[i,2]=nrow(DEGARandomlyRm[DEGARandomlyRm$Pattern%in%c("Down"),])
+write.table(DEGARandomlyRm[DEGARandomlyRm$Pattern%in%c('Up','Down'),],file=paste0("Manuscript/Microglia/Graph/Part2/RamdomDownSample/",i,"_pval.txt",sep=""),sep="\t",quote=F,row.names=F)
+}
+
+DEGNumber.df=data.frame(DEGNumber)
+mean(DEGNumber.df$UpDEGNumber)
+#19.615
+mean(DEGNumber.df$DownDEGNumber)
+#11.494
+write.table(DEGNumber.df,file="Manuscript/Microglia/Graph/Part2/DEGNumber.df.txt",sep="\t",quote=F)
+
+
+DEGBRmC7$Group="DEGBRmC7"
+DEGARandomlyRm$Group="DEGARandomlyRm"
+sigGeneB=DEGBRmC7[DEGBRmC7$threshold%in%c("Up","Down"),"feature"] #73
+sigGeneA=DEGARandomlyRm[DEGARandomlyRm$threshold%in%c("Up","Down"),"feature"] #55
+sigGeneList=unique(c(sigGeneB,sigGeneA)) #combine 84 genes
+sigGeneListInfo=rbind(DEGBRmC7[DEGBRmC7$feature%in%sigGeneList,],DEGARandomlyRm[DEGARandomlyRm$feature%in%sigGeneList,])
+FocusedGene=c("LINGO1","RASGEF1B","SRGN","RPS19","ACSL1","HIF1A","HSPA1A","APOE","SPP1","CD81","ARMC9")
+t=ggplot(data = sigGeneListInfo, aes(x = logFC, y = -log10(pval), colour=Group, label =feature )) +
+  geom_point(alpha=0.4, size=3.5) +
+  theme_bw() + 
+  scale_color_manual(values=c("blue","red")) +
+  xlim(c(-1, 1)) +
+  geom_vline(xintercept=c(-0.25,0.25),lty=4,col="black",lwd=0.8) +
+  geom_hline(yintercept = -log10(0.01),lty=4,col="black",lwd=0.8) +
+  labs(x="log2(fold change)",y="-log10 (p-value)",title="Differential Expressed Gene") +
+  theme(plot.title = element_text(hjust = 0.5), legend.position="right", legend.title = element_blank()) +  
+    geom_text_repel(
+    data = subset(sigGeneListInfo, sigGeneListInfo$feature%in%FocusedGene),
+    aes(label = feature),
+    size = 3,
+    max.overlaps=20,
+    box.padding = unit(0.5, "lines"),
+    point.padding = unit(0.8, "lines"), segment.color = "black", show.legend = FALSE )
+pdf("Manuscript/Microglia/Graph/Part2/DEGbetBARandomlyRmC7.pdf",height=5,width=7)
+print(t)
+dev.off()
 
 
 #--------------check the expression of female specific adDEGs across subtypes------------------#
@@ -526,3 +600,4 @@ FemaleInADCtrl_fgseaRes[FemaleInADCtrl_fgseaRes$pathway=="KEGG_FC_GAMMA_R_MEDIAT
 #Before RmC7 pval=9.243178e-06, NES=-1.767006
 #After RmC7 pval=0.0001546292, -1.725549
 fwrite(FemaleInADCtrl_fgseaRes, file=paste0("Manuscript/Microglia/Graph/Part2/RmC7/late_normal_KEGG_MaleAfter_RmC7_.txt",sep=""), sep="\t", sep2=c("", " ", ""))
+
