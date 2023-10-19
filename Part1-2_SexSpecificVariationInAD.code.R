@@ -1,4 +1,4 @@
-setwd("/Projects/deng/Alzheimer/syn18485175")
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
 library(Seurat)
 library(ggplot2)
 library(viridis)
@@ -9,8 +9,12 @@ library(presto)
 library(tibble)
 library(msigdbr)
 library(fgsea)
+library(pheatmap)
+library(UpSetR)
+library(clusterProfiler)
 
 ###########recluster the dataset from Mathys###################
+#Output from Part1-1_MathyDataset.code.R
 MahysDataset=readRDS("MathysDataset.code.R") 
 
 ##########cell type identification and cluster defination#########################
@@ -77,6 +81,7 @@ tmp=tmp[ClusterOrder,]
 pdf("Graph/Part1/cellNumberCountInEachCondition.pdf",width=3)
 pheatmap(tmp,cluster_row=F,clustering_method="ward.D2",legend = T,number_format="%d",cluster_col=F,display_numbers = T,color =colorRampPalette(brewer.pal(6, "Set3"))(100))
 dev.off()
+
 #---------Pvalue for each cluster-------------------
 Pvalue=array()
 i=1 
@@ -115,7 +120,7 @@ tiff("Graph/Part1/CellNumberDisInCluster13_Pathology.Group.tiff",width=750,heigh
 DimPlot(C13,group.by="Gender",split.by="pathology.group",cols = c("Violet","RoyalBlue"))&NoAxes()&theme(panel.border = element_rect(fill=NA,color="black", size=1.5, linetype="solid"))
 dev.off()
 
-
+#Trends across LOAD patholgy
 ClusterOrder=c("C1","C15","C14","C4","C3","C7","C17","C11","C18","C5","C8","C9","C16","C12","C19","C2","C0","C10","C6","C13","C21","C20")
 Female=subset(MahysDataset,Gender=="Female")
 FemaleCount=data.frame(table(paste0(Female$seurat_clusters,"_",Female$pathology.group)))
@@ -153,6 +158,8 @@ scaled_data$pathology.group=factor(scaled_data$pathology.group,levels=c("no-path
 scaled_data=scaled_data[order(scaled_data$cluster,scaled_data$pathology.group),]
 write.table(scaled_data,file="Graph/Part1/FemaleCellsRation_Pathology.Group.txt",sep="\t",quote=F,row.names=F)
 
+
+
 C13N=data.frame(table(C13$ProjectID))
 TotalN=data.frame(table(MahysDataset$ProjectID))
 all(C13N$Var1==TotalN$Var1) #should be TRUE
@@ -178,6 +185,8 @@ wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statue
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Alzheimer","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Control","Ratio"]) #p-value = 0.16
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statues=="Alzheimer","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Alzheimer","Ratio"]) #p-value = 0.197
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statues=="Control","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Control","Ratio"]) #p-value = 0.03872
+
+
 
 C13N=data.frame(table(C13$ProjectID))
 TotalN=data.frame(table(MahysDataset$ProjectID))
@@ -295,8 +304,11 @@ wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$pathol
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$pathology.group=="no-pathology","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$pathology.group=="no-pathology","Ratio"]) #p-value = 0.03872
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$pathology.group=="no-pathology","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$pathology.group=="late-pathology","Ratio"]) #p-value = 0.03872
 
+
+
 ############validate the cell number from ROSMAP bulk RNASeq##############
-setwd("D:/Alzheimer/syn18485175")
+setwd("D:/Alzheimer/syn18485175/Manuscript/Microglia")
+#downloaded from syn3157322/ROSMAP_biospecimen_metadata.csv, ROSMAP_clinical.csv, ROSMAP_clinical_codebook.pdf, ROSMAP_assay_RNAseq_metadata.csv
 phenotype=read.table("D:/Alzheimer/Syn3388564/Phenotype.txt",header=T,row.names=1,sep="\t") #the data download from synapse database
 trait=phenotype[,c(13,15,16,17)]
 t=pheatmap(trait,clustering_method="ward.D2",show_rownames=F)
@@ -313,46 +325,70 @@ t=pheatmap(trait,clustering_method="ward.D2",annotation_row=anno,annotation_colo
 pdf("Graph/Part1/TraitGroup2DefineMahysDatasetInROSMAP.pdf",height=5,width=4.5)
 print(t)
 dev.off()
-write.table(anno,file="Graph/Part1/anno.txt",sep="\t",quote=F)
+all(rownames(anno)==rownames(phenotype))
+phenotype$StatusCluster=anno$Group
+phenotype$Status=ifelse(phenotype$StatusCluster=="G1","LOAD","ND")
+write.table(phenotype,file="Graph/Part1/PhenotypeStatus.txt",sep="\t",quote=F)
 
 
-###############DEG between MahysDataset and Ctrol in female and male using bulk RNASeq###############
+###############DEG between AD and Ctrol in female and male using bulk RNASeq ###############
+library(limma)
 #D:\Alzheimer\Syn3388564\AS\Manuscript\graph\graph.code.R
-setwd("D:/Alzheimer/syn18485175")
-DEG=read.table("D:/Alzheimer/Syn3388564/AS/FemaleDEG.txt",header=T,row.names=1)
-DEG=DEG[DEG$pvalue<0.01,]
-DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
-UpGene=DEG[DEG$logFC > log2(1.2),] #1120
-DEGCount=list()
-DEGCount$DnInF=rownames(DownGene)
-DEGCount$UpInF=rownames(UpGene)
-DEG=read.table("D:/Alzheimer/Syn3388564/AS/MaleDEG.txt",header=T,row.names=1)
-DEG=DEG[DEG$pvalue<0.01,]
-DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
-UpGene=DEG[DEG$logFC > log2(1.2),] #1120
-DEGCount$DnInM=rownames(DownGene)
-DEGCount$UpInM=rownames(UpGene)
-t=upset(fromList(DEGCount))
-pdf("Graph/Part1/DEGEnrichGO8ROSMAP_Overlap.pdf",height=4,width=6)
-print(t)
-dev.off()
-DEGCount.df=rbind(
-  data.frame(Symbol=DEGCount$DnInF,Group="DownInFemale"),
-  data.frame(Symbol=DEGCount$UpInF,Group="UpInFemale"),
-  data.frame(Symbol=DEGCount$DnInM,Group="DownInMale"),
-  data.frame(Symbol=DEGCount$UpInM,Group="UpInMale")
-  )
-write.table(DEGCount.df,file="Graph/Part1/DEGByROSMAPBulk.txt",sep="\t",quote=F,row.names=F)
+setwd("D:/Alzheimer/syn18485175/Manuscript/Microglia")
+phenotype=read.table("Graph/Part1/PhenotypeStatus.txt",header=T,row.names=1,sep="\t")
+nrow(phenotype)
+#613
+#downloaded from Syn3388564/ROSMAP_RNAseq_FPKM_gene.tsv
+GeneExprByFPKMFromROSMAP=read.table("D:/Alzheimer/Syn3388564/geneExpr.txt",header=TRUE,row.names=1,sep="\t",check.names=F)
+sampleList=intersect(rownames(phenotype),colnames(GeneExprByFPKMFromROSMAP))
+length(sampleList)
+#613
+GeneExprByFPKMFromROSMAP=GeneExprByFPKMFromROSMAP[,sampleList]
+all(rownames(phenotype)==colnames(GeneExprByFPKMFromROSMAP))
+#TRUE
+range(GeneExprByFPKMFromROSMAP)
 
-DEG=read.table("D:/Alzheimer/Syn3388564/AS/FemaleDEG.txt",header=T,row.names=1)
-DEG=DEG[DEG$pvalue<0.01,]
-DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
-UpGene=DEG[DEG$logFC > log2(1.2),] #1120
-gene.df <- bitr(rownames(DownGene), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") #2982
-gene.df <- bitr(rownames(UpGene), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") #846
+data <- log2(GeneExprByFPKMFromROSMAP+1)
+range(data)
+
+phenotype.Male=phenotype[phenotype$msex=="Male",c("Status","pmi","age_at_visit_max")]
+phenotype.Male[is.na(phenotype.Male)] <- 0
+phenotype.Male$Status=factor(phenotype.Male$Status,levels=c("ND","LOAD"))
+data.Male=data[,rownames(phenotype.Male)]
+design.Male=model.matrix(~Status+pmi+age_at_visit_max,data =phenotype.Male)
+fit.Male=lmFit(data.Male,design.Male)
+fit.Male=eBayes(fit.Male)
+top.Male=topTable(fit.Male, coef = "StatusLOAD",number=Inf,p.value=1, lfc=0)
+#these soft cutoffs were accepted to idnetifed a number of DEGs in Male
+top.Male$Pattern=ifelse(top.Male$P.Value < 0.01 & abs(top.Male$logFC) >= 0, ifelse(top.Male$logFC >= 0 ,'Up','Down'),'NoSig')
+SigDEG.Male=top.Male[top.Male$Pattern%in%c("Up","Down"),]
+table(top.Male$Pattern)
+#Down NoSig    Up 
+#441 49501   232
+write.table(SigDEG.Male,file="Graph/Part1/BlukDEG/SigDEGInMaleByBulkROSMAP.txt",sep="\t",quote=F)
+
+phenotype.Female=phenotype[phenotype$msex=="Female",c("Status","pmi","age_at_visit_max")]
+phenotype.Female[is.na(phenotype.Female)] <- 0
+phenotype.Female$Status=factor(phenotype.Female$Status,levels=c("ND","LOAD"))
+data.Female=data[,rownames(phenotype.Female)]
+design.Female=model.matrix(~Status+pmi+age_at_visit_max,data =phenotype.Female)
+fit.Female=lmFit(data.Female,design.Female)
+fit.Female=eBayes(fit.Female)
+top.Female=topTable(fit.Female, coef = "StatusLOAD",number=Inf,p.value=1, lfc=0)
+top.Female$Pattern=ifelse(top.Female$P.Value < 0.01 & abs(top.Female$logFC) >= 0, ifelse(top.Female$logFC >= 0,'Up','Down'),'NoSig')
+SigDEG.Female=top.Female[top.Female$Pattern%in%c("Up","Down"),]
+table(top.Female$Pattern)
+#Down NoSig    Up 
+#4910 43811  1453
+write.table(SigDEG.Female,file="Graph/Part1/BlukDEG/SigDEGInFemaleByBulkROSMAP.txt",sep="\t",quote=F)
+
+#functional enrichment analysis of the upregulated genes (focused on gliogenesis)
+gene.df <- bitr(rownames(SigDEG.Female[SigDEG.Female$Pattern=="Up",]), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") 
+dim(gene.df)
+#1267
 go <- enrichGO(gene = gene.df$ENTREZID, OrgDb = "org.Hs.eg.db", ont="BP",readable =T)
 go=data.frame(go)
-tmp=go[1:6,]
+tmp=go[1:5,]
 tmp$Description=factor(tmp$Description,levels=rev(tmp$Description))
 t=ggplot(tmp, aes(Description, -log10(p.adjust), fill=-log10(p.adjust))) +
   geom_bar(stat="identity") +
@@ -360,41 +396,261 @@ t=ggplot(tmp, aes(Description, -log10(p.adjust), fill=-log10(p.adjust))) +
   theme_bw()+
   coord_flip(ylim = c(5, 10))+
   labs(size="",x="",y="-log(p.ajdust)",title="")
-pdf("Graph/Part1/DEGEnrichGO8ROSMAP.pdf",height=3,width=6)
+pdf("Graph/Part1/BlukDEG/DEGEnrichGO8ROSMAP.pdf",height=3,width=6)
 print(t)
 dev.off()
-write.table(go,file="Graph/Part1/DEGEnrichGO8ROSMAP.txt",sep="\t",quote=F)
+write.table(go,file="Graph/Part1/BlukDEG/DEGEnrichGO8ROSMAP.txt",sep="\t",quote=F)
 
 
-phenotype=read.table("D:/Alzheimer/Syn3388564/Phenotype.txt",header=T,row.names=1,sep="\t") #the data download from synapse database
-trait=phenotype[,c(13,15,16,17)]
-t=pheatmap(trait,clustering_method="ward.D2",show_rownames=F)
-a=data.frame(cutree(t$tree_row,k=4))
-anno=data.frame(Group=paste0("G",a[,1],sep=""))
-rownames(anno)=rownames(a)
-ann_colors = list(
-    Group = c(G1="OrangeRed",G3="SandyBrown", G2="SlateBlue",G4="LightSteelBlue")
-)
-t=pheatmap(trait,clustering_method="ward.D2",annotation_row=anno,annotation_colors=ann_colors,show_rownames=F,color = colorRampPalette(c("navy", "white", "firebrick3"))(50))
-pdf("Graph/Part1/TraitGroup4DefineMahysDatasetInROSMAP.pdf",height=5,width=4)
+SigDEG.Male.list=split(rownames(SigDEG.Male),paste0(SigDEG.Male$Pattern,"InMale",sep=""))
+SigDEG.Female.list=split(rownames(SigDEG.Female),paste0(SigDEG.Female$Pattern,"InFemale",sep=""))
+DEGCount=c(SigDEG.Male.list,SigDEG.Female.list)
+t=upset(fromList(DEGCount),sets =rev(c("DownInFemale","UpInFemale","DownInMale","UpInMale")),keep.order = T,sets.bar.color =c("#EE82EE","#FF0099","#4169E1","#CCCCFF"))
+pdf("Graph/Part1/BlukDEG/DEGEnrichGO8ROSMAP_Overlap.pdf",height=4,width=6)
 print(t)
 dev.off()
 
 
 
-############DEGs between Alzheimer and normal in snRNA##############
-setwd("/Projects/deng/Alzheimer/syn18485175")
-MahysDataset=readRDS("MahysDataset.rds") 
+##check the overlap between different DEG methods.
+FemaleDEGByLimma=read.table("Graph/Part1/BlukDEG/SigDEGInFemaleByBulkROSMAP.txt",header=T,row.names=1)
+FemaleDEGByLimma$Pattern=ifelse(FemaleDEGByLimma$logFC>0,"UpByLimma_Female","DownByLimma_Female")
+
+#t test was used in our first version and replaced by Limma, but similiar DEGs were obtained between these two methods
+FemaleDEGByTtest=read.table("D:/Alzheimer/Syn3388564/AS/FemaleDEG.txt",header=T,row.names=1)
+FemaleDEGByTtest=FemaleDEGByTtest[FemaleDEGByTtest$pvalue<0.01&abs(FemaleDEGByTtest$logFC)>log2(1.2),]
+FemaleDEGByTtest$Pattern=ifelse(FemaleDEGByTtest$logFC>log2(1.2),"UpByTtest_Female","DnByTtest_Female")
+DEGList=c(split(rownames(FemaleDEGByLimma),FemaleDEGByLimma$Pattern),split(rownames(FemaleDEGByTtest),FemaleDEGByTtest$Pattern))
+pdf("Graph/Part1/BlukDEG/OverlapBetweenTtestAndLimma_Female.pdf",width=6,height=4)
+upset(fromList(DEGList),main.bar.color=c(rep("black",4),"Blue","Red"),matrix.color="black",sets.bar.color=c(rep("RoyalBlue",2),rep("Orange",2)))
+dev.off()
+write.table(FemaleDEGByTtest,"Graph/Part1/BlukDEG/FemaleDEGByTtest.txt",sep="\t",quote=F)
+write.table(FemaleDEGByLimma,"Graph/Part1/BlukDEG/FemaleDEGByLimma.txt",sep="\t",quote=F)
+
+##Enrichment analysis showed simliar result to single DEGs identification method
+length(intersect(DEGList$UpByTtest_Female,DEGList$UpByLimma_Female)) #757
+gene.df <- bitr(intersect(DEGList$UpByTtest_Female,DEGList$UpByLimma_Female), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") 
+dim(gene.df)
+#626
+go <- enrichGO(gene = gene.df$ENTREZID, OrgDb = "org.Hs.eg.db", ont="BP",readable =T)
+go=data.frame(go)
+tmp=go[1:30,]
+tmp$Description=factor(tmp$Description,levels=rev(tmp$Description))
+t=ggplot(tmp, aes(Description, -log10(pvalue), fill=-log10(pvalue))) +
+  geom_bar(stat="identity") +
+  scale_fill_viridis_c()+
+  theme_bw()+
+  coord_flip(ylim = c(5, 10))+
+  labs(size="",x="",y="-log(pvalue)",title="")
+pdf("Graph/Part1/BlukDEG/SharedUpGeneFemaleEnrichment.pdf",height=8,width=8)
+print(t)
+dev.off()
+write.table(go,file="Graph/Part1/BlukDEG/SharedUpGeneFemaleEnrichment.txt",sep="\t",quote=F)
+
+
+MaleDEGByLimma=read.table("Graph/Part1/BlukDEG/SigDEGInMaleByBulkROSMAP.txt",header=T,row.names=1)
+MaleDEGByLimma$Pattern=ifelse(MaleDEGByLimma$logFC>0,"UpByLimma_Male","DownByLimma_Male")
+MaleDEGByTtest=read.table("D:/Alzheimer/Syn3388564/AS/MaleDEG.txt",header=T,row.names=1)
+MaleDEGByTtest=MaleDEGByTtest[MaleDEGByTtest$pvalue<0.01&abs(MaleDEGByTtest$logFC)>log2(1.2),]
+MaleDEGByTtest$Pattern=ifelse(MaleDEGByTtest$logFC>log2(1.2),"UpByTtest_Male","DnByTtest_Male")
+DEGList=c(split(rownames(MaleDEGByLimma),MaleDEGByLimma$Pattern),split(rownames(MaleDEGByTtest),MaleDEGByTtest$Pattern))
+pdf("Graph/Part1/BlukDEG/OverlapBetweenTtestAndLimma_Male.pdf",width=6,height=4)
+upset(fromList(DEGList),main.bar.color=c(rep("black",4),"Blue","Red"),matrix.color="black",sets.bar.color=c(rep("RoyalBlue",2),rep("Orange",2)))
+dev.off()
+write.table(MaleDEGByTtest,"Graph/Part1/BlukDEG/MaleDEGByTtest.txt",sep="\t",quote=F)
+write.table(MaleDEGByLimma,"Graph/Part1/BlukDEG/MaleDEGByLimma.txt",sep="\t",quote=F)
+
+
+
+##Downsampling the female sample to verify the affection of sample number on DEGs identification (As more female samples to male) ###################
+table(phenotype$msex,phenotype$Status)
+#         LOAD  ND
+#  Female  173 219
+#  Male     88 133
+PermutationNumber=1000
+DEGNumber=matrix(data = NA, nrow = PermutationNumber, ncol = 2, byrow = FALSE,dimnames = list(c(1:PermutationNumber),c("UpDEGNumber","DownDEGNumber")))
+for(i in c(1:PermutationNumber)){
+LOADDownSample=sample(rownames(phenotype[phenotype$msex=="Female"&phenotype$Status=="LOAD",]),88,replace=F) #randomly select 88 samples from 173 LOAD sample
+NDDownSample=sample(rownames(phenotype[phenotype$msex=="Female"&phenotype$Status=="ND",]),133,replace=F) #randomly select 133 samples from 219 LOAD sample
+DownSampleList=c(LOADDownSample,NDDownSample)
+length(DownSampleList)
+#221
+phenotype.Female.DownSampling=phenotype[DownSampleList,c("Status","pmi","age_at_visit_max")]
+phenotype.Female.DownSampling[is.na(phenotype.Female.DownSampling)] <- 0
+phenotype.Female.DownSampling$Status=factor(phenotype.Female.DownSampling$Status,levels=c("ND","LOAD"))
+data.Female.DownSampling=data[,rownames(phenotype.Female.DownSampling)]
+all(rownames(phenotype.Female.DownSampling)==colnames(data.Female.DownSampling))
+#TRUE
+design.Female.DownSampling=model.matrix(~Status+pmi+age_at_visit_max,data =phenotype.Female.DownSampling)
+fit.Female.DownSampling=lmFit(data.Female.DownSampling,design.Female.DownSampling)
+fit.Female.DownSampling=eBayes(fit.Female.DownSampling)
+top.Female.DownSampling=topTable(fit.Female.DownSampling, coef = "StatusLOAD",number=Inf,p.value=1, lfc=0)
+top.Female.DownSampling$Pattern=ifelse(top.Female.DownSampling$P.Value < 0.01 & abs(top.Female.DownSampling$logFC) >= 0, ifelse(top.Female.DownSampling$logFC >= 0,'Up','Down'),'NoSig')
+DEGNumber[i,1]=nrow(top.Female.DownSampling[top.Female.DownSampling$Pattern%in%c("Up"),])
+DEGNumber[i,2]=nrow(top.Female.DownSampling[top.Female.DownSampling$Pattern%in%c("Down"),])
+}
+DEGNumber.df=data.frame(DEGNumber)
+mean(DEGNumber.df$UpDEGNumber)
+#888.957
+mean(DEGNumber.df$DownDEGNumber)
+#2606.542
+write.table(DEGNumber.df,file="D:/Alzheimer/syn18485175/Manuscript/Microglia/Graph/Part1/BlukDEG/DEGNumberPermutation.txt",sep="\t",quote=F)
+
+#Another 20 random permutation to check the enrichment analysis
+PermutationNumber=20
+for(i in c(1:PermutationNumber)){
+LOADDownSample=sample(rownames(phenotype[phenotype$msex=="Female"&phenotype$Status=="LOAD",]),88,replace=F) #randomly select 88 samples from 173 LOAD sample
+NDDownSample=sample(rownames(phenotype[phenotype$msex=="Female"&phenotype$Status=="ND",]),133,replace=F) #randomly select 133 samples from 219 LOAD sample
+DownSampleList=c(LOADDownSample,NDDownSample)
+length(DownSampleList)
+#221
+phenotype.Female.DownSampling=phenotype[DownSampleList,c("Status","pmi","age_at_visit_max")]
+phenotype.Female.DownSampling[is.na(phenotype.Female.DownSampling)] <- 0
+phenotype.Female.DownSampling$Status=factor(phenotype.Female.DownSampling$Status,levels=c("ND","LOAD"))
+data.Female.DownSampling=data[,rownames(phenotype.Female.DownSampling)]
+all(rownames(phenotype.Female.DownSampling)==colnames(data.Female.DownSampling))
+#TRUE
+design.Female.DownSampling=model.matrix(~Status+pmi+age_at_visit_max,data =phenotype.Female.DownSampling)
+fit.Female.DownSampling=lmFit(data.Female.DownSampling,design.Female.DownSampling)
+fit.Female.DownSampling=eBayes(fit.Female.DownSampling)
+top.Female.DownSampling=topTable(fit.Female.DownSampling, coef = "StatusLOAD",number=Inf,p.value=1, lfc=0)
+top.Female.DownSampling$Pattern=ifelse(top.Female.DownSampling$P.Value < 0.01 & abs(top.Female.DownSampling$logFC) >= 0, ifelse(top.Female.DownSampling$logFC >= 0,'Up','Down'),'NoSig')
+SigDEG.Female=top.Female.DownSampling
+gene.df <- bitr(rownames(SigDEG.Female[SigDEG.Female$Pattern=="Up",]), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") 
+dim(gene.df)
+#1267
+go <- enrichGO(gene = gene.df$ENTREZID, OrgDb = "org.Hs.eg.db", ont="BP",readable =T)
+go=data.frame(go)
+go$UpDEGNumber=nrow(top.Female.DownSampling[top.Female.DownSampling$Pattern%in%c("Up"),])
+go$DownDEGNumber=nrow(top.Female.DownSampling[top.Female.DownSampling$Pattern%in%c("Down"),])
+N=min(dim(go)[1],50)
+tmp=go[1:N,]
+write.table(tmp,file=paste0("D:/Alzheimer/syn18485175/Manuscript/Microglia/Graph/Part1/BlukDEG/GOBPEnrich/EnrichAt_",i,"_Top50GoBP.txt",sep=""),sep="\t",quote=F)
+}
+
+
+
+### DEGs identified by T test, replaced by limma using the linear model under suggestions by reviewers
+#DEG=read.table("D:/Alzheimer/Syn3388564/AS/FemaleDEG.txt",header=T,row.names=1)
+#DEG=DEG[DEG$pvalue<0.01,]
+#DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
+#UpGene=DEG[DEG$logFC > log2(1.2),] #1120
+#DEGCount=list()
+#DEGCount$DnInF=rownames(DownGene)
+#DEGCount$UpInF=rownames(UpGene)
+#DEG=read.table("D:/Alzheimer/Syn3388564/AS/MaleDEG.txt",header=T,row.names=1)
+#DEG=DEG[DEG$pvalue<0.01,]
+#DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
+#UpGene=DEG[DEG$logFC > log2(1.2),] #1120
+#DEGCount$DnInM=rownames(DownGene)
+#DEGCount$UpInM=rownames(UpGene)
+#t=upset(fromList(DEGCount))
+#pdf("Graph/Part1/DEGEnrichGO8ROSMAP_Overlap.pdf",height=4,width=6)
+#print(t)
+#dev.off()
+#DEGCount.df=rbind(
+#  data.frame(Symbol=DEGCount$DnInF,Group="DownInFemale"),
+#  data.frame(Symbol=DEGCount$UpInF,Group="UpInFemale"),
+#  data.frame(Symbol=DEGCount$DnInM,Group="DownInMale"),
+#  data.frame(Symbol=DEGCount$UpInM,Group="UpInMale")
+ # )
+#write.table(DEGCount.df,file="Graph/Part1/DEGByROSMAPBulk.txt",sep="\t",quote=F,row.names=F)
+
+#DEG=read.table("D:/Alzheimer/Syn3388564/AS/FemaleDEG.txt",header=T,row.names=1)
+#DEG=DEG[DEG$pvalue<0.01,]
+#DownGene=DEG[DEG$logFC < -log2(1.2),] #3523
+#UpGene=DEG[DEG$logFC > log2(1.2),] #1120
+#gene.df <- bitr(rownames(DownGene), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") #2982
+#gene.df <- bitr(rownames(UpGene), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") #846
+#go <- enrichGO(gene = gene.df$ENTREZID, OrgDb = "org.Hs.eg.db", ont="BP",readable =T)
+#go=data.frame(go)
+#tmp=go[1:6,]
+#tmp$Description=factor(tmp$Description,levels=rev(tmp$Description))
+#t=ggplot(tmp, aes(Description, -log10(p.adjust), fill=-log10(p.adjust))) +
+#  geom_bar(stat="identity") +
+#  scale_fill_viridis_c()+
+#  theme_bw()+
+#  coord_flip(ylim = c(5, 10))+
+#  labs(size="",x="",y="-log(p.ajdust)",title="")
+#pdf("Graph/Part1/DEGEnrichGO8ROSMAP.pdf",height=3,width=6)
+#print(t)
+#dev.off()
+#write.table(go,file="Graph/Part1/DEGEnrichGO8ROSMAP.txt",sep="\t",quote=F)
+
+
+
+############DEGs between Alzheimer and ND in snRNA##############
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
+MahysDataset=readRDS("/Projects/deng/Alzheimer/syn18485175/MahysDataset.rds") 
+#Add addition infor on seurat object
+Info=read.table("/Projects/deng/Alzheimer/syn18485175/Phenotype4Cell.txt",header=TRUE,row.names=1,sep="\t")
+MicInfo=Info[colnames(MahysDataset),]
+all(rownames(MicInfo)==rownames(MahysDataset@meta.data))
+MahysDataset$pmi=ifelse(is.na(MicInfo$Pmi),0,MicInfo$Pmi)
+MahysDataset$Age=MicInfo$age_death
+
 C13=subset(MahysDataset,ident=13)
 Idents(C13)=C13$Statues
-MahysDatasetdeg <- wilcoxauc(subset(C13,Gender=="Male"), 'Statues')
-MahysDatasetdegMahysDataset<- MahysDatasetdeg %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
-MahysDatasetdegMahysDataset=read.table("Graph/Part1/DEGbetMahysDatasetCtrlInMale.txt",header=T)
-hs_data=MahysDatasetdegMahysDataset
+
+##DEGs between LOAD and ND from male
+ADdegByWilcox <- wilcoxauc(subset(C13,Gender=="Male"), 'Statues')
+ADdegByWilcox <- ADdegByWilcox %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
+hs_data=ADdegByWilcox
 hs_data$threshold = as.factor(ifelse(hs_data$pval < 0.01 & abs(hs_data$logFC) >= 0, ifelse(hs_data$logFC >= 0 ,'Up','Down'),'NoSignificant'))
 table(hs_data$threshold)
+#ADdegByWilcox
 #Down NoSignificant            Up
 #30         17895            287
+write.table(hs_data,file="Graph/Part1/DEGbetAD_CtrlInMale_wilcox.txt",sep="\t",row.names=F,quote=F)
+MaleListByWilcox=split(hs_data$feature,hs_data$threshold)
+MaleListByWilcox$NoSignificant=NULL
+
+#we also detect DEGs by MAST method (suggested by reviewers)
+ADdegByMAST=FindMarkers(subset(C13,Gender=="Male"),ident.1="Alzheimer",ident.2="Control",test.use = "MAST",latent.vars =c("Age","pmi"),logfc.threshold = 0,min.pct = 0)
+hs_data=ADdegByMAST
+colnames(hs_data)=c("pval","logFC","pct.1","pct.2","padj") #rename colnames to map wilcox result
+hs_data$threshold = as.factor(ifelse(hs_data$pval < 0.01 & abs(hs_data$logFC) >= 0, ifelse(hs_data$logFC >= 0 ,'Up','Down'),'NoSignificant'))
+table(hs_data$threshold)
+#ADdegByMAST
+#Down NoSignificant          Up
+#42         17810            74
+write.table(hs_data,file="Graph/Part1/DEGbetAD_CtrlInMale_MAST.txt",sep="\t",quote=F)
+MaleListByMAST=split(rownames(hs_data),hs_data$threshold)
+MaleListByMAST$NoSignificant=NULL
+
+names(MaleListByWilcox)=c("DnIn_MaleAD_Wilcox","UpIn_MaleAD_Wilcox")
+names(MaleListByMAST)=c("DnIn_MaleAD_MAST","UpIn_MaleAD_MAST")
+MaleDEGList=c(MaleListByWilcox,MaleListByMAST)
+
+
+#check the overlap between different DGE algorithms (wilcox and MAST) and got the same results from male
+t=upset(fromList(MaleDEGList),
+    keep.order = T,
+    sets = rev(c("DnIn_MaleAD_Wilcox", "UpIn_MaleAD_Wilcox", "DnIn_MaleAD_MAST","UpIn_MaleAD_MAST")),
+    main.bar.color="RoyalBlue",matrix.color="RoyalBlue",sets.bar.color="LimeGreen")
+pdf("Graph/Part1/MaleDEGListOverlapBetweenWilcoxAndMAST.pdf",height=4,width=5)
+print(t)
+dev.off()
+
+length(intersect(MaleDEGList$DnIn_MaleAD_Wilcox,MaleDEGList$DnIn_MaleAD_MAST))
+#18
+length(MaleDEGList$DnIn_MaleAD_Wilcox)
+#30
+length(MaleDEGList$DnIn_MaleAD_MAST)
+#42
+1-phyper(18-1,30,17926-30,)
+#0
+
+length(intersect(MaleDEGList$UpIn_MaleAD_Wilcox,MaleDEGList$UpIn_MaleAD_MAST))
+#70
+length(MaleDEGList$UpIn_MaleAD_Wilcox)
+#287
+length(MaleDEGList$UpIn_MaleAD_MAST)
+#74
+1-phyper(70-1,287,17926-287,74)
+#0
+
+##viocano plots for DEGs
 hs_data$ID=hs_data$feature
 t=ggplot(data = hs_data, aes(x = logFC, y = -log10(pval), colour=threshold, label =ID )) +
   geom_point(alpha=0.4, size=3.5) +
@@ -412,41 +668,70 @@ t=ggplot(data = hs_data, aes(x = logFC, y = -log10(pval), colour=threshold, labe
     size = 3,
     box.padding = unit(0.5, "lines"),
     point.padding = unit(0.8, "lines"), segment.color = "black", show.legend = FALSE )
-tiff("Graph/Part1/DEGbetMahysDatasetCtrlInMale_Gene.tiff",height=2000,width=2200)
+tiff("Graph/Part1/DEGbetMahysDatasetCtrlInMale_Gene.tiff",height=1000,width=1200)
 print(t)
 dev.off()
-write.table(hs_data,file="Graph/Part1/DEGbetMahysDatasetCtrlInMale.txt",sep="\t",row.names=F,quote=F)
-MaleList=split(hs_data$feature,hs_data$threshold)
-MaleList$NoSignificant=NULL
 
-MahysDatasetdeg <- wilcoxauc(subset(C13,Gender=="Female"), 'Statues')
-MahysDatasetdegMahysDataset<- MahysDatasetdeg %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
-MahysDatasetdegMahysDataset=read.table("Graph/Part1/DEGbetMahysDatasetCtrlInFemale.txt",header=T)
-hs_data=MahysDatasetdegMahysDataset
+
+##DEGs between LOAD and ND from female
+ADdegByWilcox <- wilcoxauc(subset(C13,Gender=="Female"), 'Statues')
+ADdegByWilcox <- ADdegByWilcox %>% dplyr::filter(group == "Alzheimer") %>% arrange(desc(logFC)) %>% dplyr::select(feature, c(logFC,pval))
+hs_data=ADdegByWilcox
 hs_data$threshold = as.factor(ifelse(hs_data$pval < 0.01 & abs(hs_data$logFC) >= 0, ifelse(hs_data$logFC >= 0 ,'Up','Down'),'NoSignificant'))
 table(hs_data$threshold)
+#ADdegByWilcox
 #Down NoSignificant            Up
 #284         17580            62
-hs_data$ID=hs_data$feature
-t=ggplot(data = hs_data, aes(x = logFC, y = -log10(pval), colour=threshold, label =ID )) +
-  geom_point(alpha=0.4, size=3.5) +
-  theme_bw() + ylim(0,12)+
-  scale_color_manual(values=c("blue", "grey","red")) +
-  xlim(c(-1, 1)) +
-  geom_vline(xintercept=c(0),lty=4,col="black",lwd=0.8) +
-  geom_hline(yintercept = -log10(0.01),lty=4,col="black",lwd=0.8) +
-  labs(x="",y="",title="") +
-  theme(legend.position="none",axis.title.x=element_blank(),axis.title.y=element_blank(),axis.text.x=element_blank(),axis.text.y=element_blank()) +  
-    geom_text_repel(
-    data = subset(hs_data, hs_data$pval < 0.01 & abs(hs_data$logFC) >= 0.25),
-    aes(label = ""),
-    size = 3,
-    box.padding = unit(0.5, "lines"),
-    point.padding = unit(0.8, "lines"), segment.color = "black", show.legend = FALSE )
-tiff("Graph/Part1/DEGbetMahysDatasetCtrlInFemaleNoLabel.tiff",height=500,width=600)
+write.table(hs_data,file="Graph/Part1/DEGbetAD_CtrlInFemale_wilcox.txt",sep="\t",row.names=F,quote=F)
+FemaleListByWilcox=split(hs_data$feature,hs_data$threshold)
+FemaleListByWilcox$NoSignificant=NULL
+
+ADdegByMAST=FindMarkers(subset(C13,Gender=="Female"),ident.1="Alzheimer",ident.2="Control",test.use = "MAST",latent.vars =c("Age","pmi"),logfc.threshold = 0,min.pct = 0)
+hs_data=ADdegByMAST
+colnames(hs_data)=c("pval","logFC","pct.1","pct.2","padj") #rename colnames to map wilcox result
+hs_data$threshold = as.factor(ifelse(hs_data$pval < 0.01 & abs(hs_data$logFC) >= 0, ifelse(hs_data$logFC >= 0 ,'Up','Down'),'NoSignificant'))
+table(hs_data$threshold)
+#ADdegByMAST
+#Down NoSignificant            Up
+#133         17690           103
+write.table(hs_data,file="Graph/Part1/DEGbetAD_CtrlInFemale_MAST.txt",sep="\t",quote=F)
+FemaleListByMAST=split(rownames(hs_data),hs_data$threshold)
+FemaleListByMAST$NoSignificant=NULL
+
+names(FemaleListByWilcox)=c("DnIn_FemaleAD_Wilcox","UpIn_FemaleAD_Wilcox")
+names(FemaleListByMAST)=c("DnIn_FemaleAD_MAST","UpIn_FemaleAD_MAST")
+FemaleDEGList=c(FemaleListByWilcox,FemaleListByMAST)
+
+##check the overlap between different DGE algorithms (wilcox and MAST) and got the same results from female
+t=upset(fromList(FemaleDEGList),
+    keep.order = T,
+    sets = rev(c("DnIn_FemaleAD_Wilcox", "UpIn_FemaleAD_Wilcox", "DnIn_FemaleAD_MAST","UpIn_FemaleAD_MAST")),
+    main.bar.color="RoyalBlue",matrix.color="RoyalBlue",sets.bar.color="LimeGreen")
+pdf("Graph/Part1/FemaleDEGListOverlapBetweenWilcoxAndMAST.pdf",height=4,width=5)
 print(t)
 dev.off()
 
+
+length(intersect(FemaleDEGList$DnIn_FemaleAD_Wilcox,FemaleDEGList$DnIn_FemaleAD_MAST))
+#123
+length(FemaleDEGList$DnIn_FemaleAD_Wilcox)
+#284
+length(FemaleDEGList$DnIn_FemaleAD_MAST)
+#133
+1-phyper(123-1,284,17926-284,133)
+#0
+
+length(intersect(FemaleDEGList$UpIn_FemaleAD_Wilcox,FemaleDEGList$UpIn_FemaleAD_MAST))
+#50
+length(FemaleDEGList$UpIn_FemaleAD_Wilcox)
+#62
+length(FemaleDEGList$UpIn_FemaleAD_MAST)
+#103
+1-phyper(50-1,62,17926-62,103)
+#0
+
+
+hs_data$ID=hs_data$feature
 t=ggplot(data = hs_data, aes(x = logFC, y = -log10(pval), colour=threshold, label =ID )) +
   geom_point(alpha=0.4, size=3.5) +
   theme_bw() + 
@@ -466,17 +751,14 @@ t=ggplot(data = hs_data, aes(x = logFC, y = -log10(pval), colour=threshold, labe
 tiff("Graph/Part1/DEGbetMahysDatasetCtrlInFemale_Gene.tiff",height=2000,width=2200)
 print(t)
 dev.off()
-write.table(hs_data,file="Graph/Part1/DEGbetMahysDatasetCtrlInFemale.txt",sep="\t",row.names=F,quote=F)
-FemaleList=split(hs_data$feature,hs_data$threshold)
-FemaleList$NoSignificant=NULL
 
-names(MaleList)=c("DnInMahysDataset_Male","UpInMahysDataset_Male")
-names(FemaleList)=c("DnInMahysDataset_Female","UpInMahysDataset_Female")
-DEGList=c(MaleList,FemaleList)
+
+
+DEGList=c(MaleListByWilcox,FemaleListByWilcox)
 library(UpSetR)
 t=upset(fromList(DEGList),
     keep.order = T,
-    sets = rev(c("DnInMahysDataset_Female", "UpInMahysDataset_Female", "UpInMahysDataset_Male","DnInMahysDataset_Male")),
+    sets = rev(c("DnIn_FemaleAD_Wilcox", "UpIn_FemaleAD_Wilcox", "UpIn_MaleAD_Wilcox","DnIn_MaleAD_Wilcox")),
     main.bar.color="RoyalBlue",matrix.color="RoyalBlue",sets.bar.color="LimeGreen")
 pdf("Graph/Part1/DEGListOverlap.pdf",height=4,width=5)
 print(t)
@@ -528,7 +810,7 @@ print(t)
 dev.off()
 
 #-----------GSEA between MahysDataset and Control---------------------
-setwd("/Projects/deng/Alzheimer/syn18485175")
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
 MahysDataset=readRDS("MahysDataset.rds") #MahysDataset.rds from D:\Alzheimer\syn18485175\Analysis.R
 C13=subset(MahysDataset,ident=13)
 m_df<- msigdbr(species = "Homo sapiens", category = "C2",subcategory="CP:KEGG")
@@ -569,8 +851,9 @@ dev.off()
 dataT$leadingEdge=as.character(dataT$leadingEdge)
 fwrite(dataT, file="Graph/Part1/KEGGEnrichBetMahysDatasetCtrlSplit8Sex.txt", sep="\t", sep2=c(c("","|","")))
 
+
 #-----------Validate by independent datasets for some pathway---------------------
-setwd("/Projects/deng/Alzheimer/syn18485175")
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
 LauMahysDatasetMic=readRDS("/Projects/deng/Alzheimer/Lau/CombineMathys/LauMahysDatasetMic.rds")
 m_df<- msigdbr(species = "Homo sapiens", category = "C2",subcategory="CP:KEGG")  #CP:KEGG
 fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
@@ -605,8 +888,9 @@ plotGseaTable(fgsea_sets[targetPathways], ranks, fgseaRes, gseaParam=0.5)
 dev.off()
 #although inhibite, not significant
 
-#-----------GSEA between MahysDataset (early and late pathology) and Control ---------------------
-setwd("/Projects/deng/Alzheimer/syn18485175")
+
+#-----------GSEA between LOAD (early and late pathology) and Control ---------------------
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
 MahysDataset=readRDS("MahysDataset.rds")
 m_df<- msigdbr(species = "Homo sapiens", category = "C2",subcategory="CP:KEGG")  #CP:KEGG
 fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
