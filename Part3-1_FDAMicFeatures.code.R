@@ -12,8 +12,8 @@ library(homologene)
 library(scCustomize)
 
 
-setwd("/Projects/deng/Alzheimer/syn18485175")
-ADMic=readRDS("ADMic.rds")
+setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
+ADMic=readRDS("/Projects/deng/Alzheimer/syn18485175/ADMic.rds")
 Idents(ADMic)=ADMic$SubType
 #BAMic   HomMic NorARMic    ARMic   FDAMic   DysMic   OpcMic
 #158      998      154      136      148      117       24
@@ -35,6 +35,37 @@ write.table(DEGTmp,file="Graph/Part3/Marker/FDAMic.txt",sep="\t",quote=F)
 DEG=FindMarkers(ADMic,ident.1="DysMic",pct.min=0.25)
 DEGTmp=DEG[DEG$p_val<0.01,]
 write.table(DEGTmp,file="Graph/Part3/Marker/DysMic.txt",sep="\t",quote=F)
+
+#Reviewer 2: compairsion of the DEGs identifed by wilcox and Mast
+DEGByWilcox=FindMarkers(ADMic,ident.1="FDAMic",pct.min=0.25,test.use = "wilcox")
+DEGByWilcox=DEGByWilcox[DEGByWilcox$p_val<0.01,]
+dim(DEGByWilcox)
+#373   6
+DEGByWilcox$Pattern=ifelse(DEGByWilcox$avg_log2FC>0,"UpByWilcox","DownByWilcox")
+write.table(DEGByWilcox,file="Graph/Part3/Mast/DEGByWilcox.txt",sep="\t",quote=F)
+DEGByWilcoxList=split(rownames(DEGByWilcox),DEGByWilcox$Pattern)
+
+Info=read.table("/Projects/deng/Alzheimer/syn18485175/Phenotype4Cell.txt",header=TRUE,row.names=1,sep="\t")
+MicInfo=Info[colnames(ADMic),]
+all(rownames(MicInfo)==rownames(ADMic@meta.data))
+ADMic$pmi=ifelse(is.na(MicInfo$Pmi),0,MicInfo$Pmi)
+DEGByMAST=FindMarkers(ADMic,ident.1="FDAMic",test.use = "MAST",latent.vars =c("Age","pmi"))
+DEGByMAST=DEGByMAST[DEGByMAST$p_val<0.01,]
+dim(DEGByMAST)
+#416   6
+DEGByMAST$Pattern=ifelse(DEGByMAST$avg_log2FC>0,"UpByMAST","DownByMAST")
+write.table(DEGByMAST,file="Graph/Part3/Mast/FDAmarkerByMAST.txt",sep="\t",quote=F)
+DEGByMASTList=split(rownames(DEGByMAST),DEGByMAST$Pattern)
+
+length(intersect(rownames(DEGByWilcox),rownames(DEGByMAST)))
+
+DEGList=c(DEGByWilcoxList,DEGByMASTList)
+t=upset(fromList(DEGList),sets =rev(c("UpByMAST","UpByWilcox","DownByMAST","DownByWilcox")),keep.order = T,sets.bar.color =c("Orange","Orange","RoyalBlue","RoyalBlue"))
+pdf("Graph/Part3/Mast/DEGOverlapBetweenMastAndWilcox.pdf",height=4,width=6)
+print(t)
+dev.off()
+
+
 
 BAMic=read.table("Graph/Part3/Marker/BAMic.txt",header=T,row.names = NULL)
 BAMic$Pattern=ifelse(BAMic$avg_log2FC>0,"UpInBAMic","DnInBAMic")
@@ -523,4 +554,3 @@ theme(axis.text.x = element_text(angle=90,vjust=0.5,hjust=1))
 pdf("Graph/Part3/GSEAPlotOfRiskGeneDetailInC9.pdf",height=3,width=5)
 print(t)
 dev.off()
-
