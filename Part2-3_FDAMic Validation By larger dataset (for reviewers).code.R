@@ -89,3 +89,53 @@ theme_bw()+theme(title = element_text(size=rel(1.0)),axis.text.x = element_text(
 pdf("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia/Graph/Part1/TargetGenesByGreen_Mic12_13.pdf",width=8,height=3) #
 print(g)
 dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#http://compbio.mit.edu/microglia_states/
+#data was downloaded from https://personal.broadinstitute.org/cboix/sun_victor_et_al_data/ not from syn52293417
+
+ImmuneCells.meta=readRDS("rawData/ROSMAP.ImmuneCells.6regions.snRNAseq.meta.rds")
+#TRUE
+
+#only focused on the PFC (PFC batch)
+SampleInfor=ImmuneCells.meta[ImmuneCells.meta$brainRegion%in%c("PFC")&ImmuneCells.meta$batch=="PFC",]
+sampleClusterNumber=data.frame(table(SampleInfor$subject,SampleInfor$seurat_clusters))
+colnames(sampleClusterNumber)=c("sample","cluster","SampleClusterN")
+sampleNumber=data.frame(table(SampleInfor$subject))
+colnames(sampleNumber)=c("sample","SampleN")
+micRatio=merge(sampleClusterNumber,sampleNumber,by="sample")
+micRatio$Ratio=micRatio$SampleClusterN/micRatio$SampleN
+phenotype=unique(SampleInfor[,c("subject","msex","ADdiag3types")])
+colnames(phenotype)=c("sample","Gender","ADdiag3types")
+micRatio.df=merge(phenotype,micRatio,by="sample")
+micRatio.df$Gender=factor(micRatio.df$Gender,levels=c("Male","Female"))
+micRatio.df$ADdiag3types=factor(micRatio.df$ADdiag3types,levels=c("nonAD","earlyAD","lateAD"))
+micRatio.df$Status=ifelse(micRatio.df$ADdiag3types=="nonAD","ND","LOAD")
+micRatio.df$Status=factor(micRatio.df$Status,levels=c("ND","LOAD"))
+t=ggplot(micRatio.df, aes(x=Gender, y=as.numeric(Ratio)*100, fill=Status)) +
+  geom_boxplot(position=position_dodge(0.8)) +  #,outlier.shape = NA
+  #geom_point(position=position_jitterdodge(),aes(fill=Status))+
+  scale_fill_manual(values = c("RoyalBlue","Violet","Red"))+
+  theme_bw()+
+  #ggpubr::stat_compare_means(method = "t.test",aes(label = sprintf("p = %4.3f", as.numeric(..p.format..))))+
+  facet_wrap(.~cluster,scales="free_y")+
+  scale_y_continuous(expand = c(0.2, 0))+
+  theme(axis.title.x=element_blank(),axis.title.y=element_blank())+
+  theme(axis.text.x = element_text(size=rel(1.0)),axis.text.y = element_text(size=rel(1.0)))
+pdf("cellNumberVariationFromNaSun_PFC(PFCBatchOnly)_NoPvalue.pdf",width=10,height=8)
+print(t)
+dev.off()
+
