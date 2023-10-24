@@ -50,8 +50,8 @@ tiff("Graph/Part1/MahysDatasetcellClusterLabel.tiff",width=450,height=400)
 DimPlot(MahysDataset,label=T,label.size = 6)&NoLegend()&NoAxes()&theme(panel.border = element_rect(fill=NA,color="black", size=1.5, linetype="solid"))
 dev.off()
 
-##########cell number variation for each cluster to define the outpeform of Mic in female MahysDataset####################
-MahysDatasettmp=subset(MahysDataset,ident=c(0:21))
+##########cell number variation for each cluster (microglia showed significant changed in female AD)####################
+MahysDatasettmp=subset(MahysDataset,ident=c(0:21)) #cluster 22 was removed due to the small numer
 tmp=paste0(MahysDatasettmp$seurat_clusters,"_",MahysDatasettmp$Gender,"_",MahysDatasettmp$Statues,sep="")
 tmp=as.matrix(table(tmp))
 TmpInfo=as.matrix(do.call(rbind, strsplit(as.character(rownames(tmp)),'_')))
@@ -187,7 +187,7 @@ wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statue
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statues=="Control","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Control","Ratio"]) #p-value = 0.03872
 
 
-
+## Sex dependent microglia ratio across various pathology and congnitive impairment 
 C13N=data.frame(table(C13$ProjectID))
 TotalN=data.frame(table(MahysDataset$ProjectID))
 all(C13N$Var1==TotalN$Var1) #should be TRUE
@@ -331,7 +331,7 @@ phenotype$Status=ifelse(phenotype$StatusCluster=="G1","LOAD","ND")
 write.table(phenotype,file="Graph/Part1/PhenotypeStatus.txt",sep="\t",quote=F)
 
 
-###############DEG between AD and Ctrol in female and male using bulk RNASeq ###############
+###############DEG between AD and Ctrl in female and male using bulk RNASeq ###############
 library(limma)
 #D:\Alzheimer\Syn3388564\AS\Manuscript\graph\graph.code.R
 setwd("D:/Alzheimer/syn18485175/Manuscript/Microglia")
@@ -367,6 +367,7 @@ table(top.Male$Pattern)
 #441 49501   232
 write.table(SigDEG.Male,file="Graph/Part1/BlukDEG/SigDEGInMaleByBulkROSMAP.txt",sep="\t",quote=F)
 
+
 phenotype.Female=phenotype[phenotype$msex=="Female",c("Status","pmi","age_at_visit_max")]
 phenotype.Female[is.na(phenotype.Female)] <- 0
 phenotype.Female$Status=factor(phenotype.Female$Status,levels=c("ND","LOAD"))
@@ -382,6 +383,7 @@ table(top.Female$Pattern)
 #4910 43811  1453
 write.table(SigDEG.Female,file="Graph/Part1/BlukDEG/SigDEGInFemaleByBulkROSMAP.txt",sep="\t",quote=F)
 
+
 #functional enrichment analysis of the upregulated genes (focused on gliogenesis)
 gene.df <- bitr(rownames(SigDEG.Female[SigDEG.Female$Pattern=="Up",]), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") 
 dim(gene.df)
@@ -396,12 +398,14 @@ t=ggplot(tmp, aes(Description, -log10(p.adjust), fill=-log10(p.adjust))) +
   theme_bw()+
   coord_flip(ylim = c(5, 10))+
   labs(size="",x="",y="-log(p.ajdust)",title="")
-pdf("Graph/Part1/BlukDEG/DEGEnrichGO8ROSMAP.pdf",height=3,width=6)
+pdf("Graph/Part1/BlukDEG/DEGByLimmaEnrichGO8ROSMAP.pdf",height=3,width=6)
 print(t)
 dev.off()
 write.table(go,file="Graph/Part1/BlukDEG/DEGEnrichGO8ROSMAP.txt",sep="\t",quote=F)
 
 
+SigDEG.Male=read.table("Graph/Part1/BlukDEG/SigDEGInMaleByBulkROSMAP.txt",header=T,row.names=1)
+SigDEG.Female=read.table("Graph/Part1/BlukDEG/SigDEGInFemaleByBulkROSMAP.txt",header=T,row.names=1)
 SigDEG.Male.list=split(rownames(SigDEG.Male),paste0(SigDEG.Male$Pattern,"InMale",sep=""))
 SigDEG.Female.list=split(rownames(SigDEG.Female),paste0(SigDEG.Female$Pattern,"InFemale",sep=""))
 DEGCount=c(SigDEG.Male.list,SigDEG.Female.list)
@@ -516,6 +520,7 @@ fit.Female.DownSampling=eBayes(fit.Female.DownSampling)
 top.Female.DownSampling=topTable(fit.Female.DownSampling, coef = "StatusLOAD",number=Inf,p.value=1, lfc=0)
 top.Female.DownSampling$Pattern=ifelse(top.Female.DownSampling$P.Value < 0.01 & abs(top.Female.DownSampling$logFC) >= 0, ifelse(top.Female.DownSampling$logFC >= 0,'Up','Down'),'NoSig')
 SigDEG.Female=top.Female.DownSampling
+#focused on the upregualted genes to decipher their functional (the downregualted genes should be derived from neuron)
 gene.df <- bitr(rownames(SigDEG.Female[SigDEG.Female$Pattern=="Up",]), fromType="SYMBOL",toType="ENTREZID",OrgDb = "org.Hs.eg.db") 
 dim(gene.df)
 #1267
@@ -591,6 +596,7 @@ MahysDataset$Age=MicInfo$age_death
 
 C13=subset(MahysDataset,ident=13)
 Idents(C13)=C13$Statues
+
 
 ##DEGs between LOAD and ND from male
 ADdegByWilcox <- wilcoxauc(subset(C13,Gender=="Male"), 'Statues')
@@ -774,40 +780,43 @@ t=rbind(paste0(DEGList$DnInMahysDataset_Female, collapse=","),paste0(DEGList$UpI
 rownames(t)=c("DnInMahysDataset_Female", "UpInMahysDataset_Female", "UpInMahysDataset_Male","DnInMahysDataset_Male")
 write.table(t,file="Graph/Part1/DEGlist.txt",col.names=F,quote=F,sep="\t")
 
-
-C13$Statues=factor(C13$Statues,levels=c("Control","Alzheimer"))
-C13$Gender=factor(C13$Gender,levels=c("Male","Female"))
-Idents(C13)=C13$Gender
-pdf("Graph/Part1/DEGCluster13BetGender.pdf",width=10,height=6)
-VlnPlot(C13,features=c("HSPA1A","MSR1","APOE","SPP1"),pt.size=0,ncol=2,cols = c("SlateBlue","Coral"),group.by="Gender",split.by="Statues",split.plot = TRUE)&theme(axis.text.x=element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())
-dev.off()
+## example of the specific genes derived from the upset plot: deleted suggested by reviewers
+#C13$Statues=factor(C13$Statues,levels=c("Control","Alzheimer"))
+#C13$Gender=factor(C13$Gender,levels=c("Male","Female"))
+#Idents(C13)=C13$Gender
+#pdf("Graph/Part1/DEGCluster13BetGender.pdf",width=10,height=6)
+#VlnPlot(C13,features=c("HSPA1A","MSR1","APOE","SPP1"),pt.size=0,ncol=2,cols = c("SlateBlue","Coral"),group.by="Gender",split.by="Statues",split.plot = TRUE)&theme(axis.text.x=element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())
+#dev.off()
 
 pdf("Graph/Part1/ProliferationCluster13BetGender.pdf",width=8,height=2)
 VlnPlot(C13,features=c("CSF1R","CD81"),split.plot = FALSE,pt.size=0,ncol=2,cols = c("SlateBlue","Coral"),group.by="Gender",split.by="Statues")&theme(axis.text.x=element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank())
 dev.off()
 
-############CSF1R and CD81 between Alzheimer and Ctrl in ROSMAP bulk RNAseq--validation, other genes like MSR1 not good, might by affected by neurons inhibition##############
-GeneExpr=read.table("D:/Alzheimer/Syn3388564/geneExpr.txt",header=TRUE,row.names=1,sep="\t",check.names=F)
-SampleInfo=read.table("D:/Alzheimer/Syn3388564/Phenotype.txt",header=TRUE,row.names=1,sep="\t")
-Samples=intersect(colnames(GeneExpr),rownames(SampleInfo))
-GeneExpr=GeneExpr[rowSums(GeneExpr)>0,Samples]
-SampleInfo=SampleInfo[Samples,]
-all(colnames(GeneExpr)==rownames(SampleInfo))
-BigData=cbind(SampleInfo,t(GeneExpr))
-BigDataCogdx=BigData[BigData$cogdx %in% c(1,2,4,5),]
-BigDataCogdx$msex=factor(BigDataCogdx$msex,levels=c("Male","Female"))
-t=ggplot(BigDataCogdx, aes(x=as.character(cogdx), y=log2(`FCGR2A`+1),color=as.character(cogdx)))+
-geom_boxplot()+labs(title="",x="", y = "")+ #ylim(c(1.5,3.5))+
-theme (strip.text= element_text(size=15)) + 
-theme_bw()+
-stat_compare_means(comparisons =list(c("1","5")))+
-scale_color_manual(values = c("SlateBlue","DarkOrchid","SandyBrown","Coral"))+
-theme(legend.position="none")+ geom_jitter(shape=1, position=position_jitter(0.2))+
-theme(axis.title.y = element_text(size=rel(1.0)),axis.text.x = element_text(size=rel(1.0)),axis.text.y = element_text(size=rel(1.0)))+
-facet_grid(~msex)
-pdf("Graph/Part1/CSF1RInROSMAP.pdf",width=8,height=4)
-print(t)
-dev.off()
+
+
+#####not show in the manuscript: CSF1R and CD81 between Alzheimer and Ctrl in ROSMAP bulk RNAseq--validation, other genes like MSR1 not good, might by affected by neurons inhibition##############
+#GeneExpr=read.table("D:/Alzheimer/Syn3388564/geneExpr.txt",header=TRUE,row.names=1,sep="\t",check.names=F)
+#SampleInfo=read.table("D:/Alzheimer/Syn3388564/Phenotype.txt",header=TRUE,row.names=1,sep="\t")
+#Samples=intersect(colnames(GeneExpr),rownames(SampleInfo))
+#GeneExpr=GeneExpr[rowSums(GeneExpr)>0,Samples]
+#SampleInfo=SampleInfo[Samples,]
+#all(colnames(GeneExpr)==rownames(SampleInfo))
+#BigData=cbind(SampleInfo,t(GeneExpr))
+#BigDataCogdx=BigData[BigData$cogdx %in% c(1,2,4,5),]
+#BigDataCogdx$msex=factor(BigDataCogdx$msex,levels=c("Male","Female"))
+#t=ggplot(BigDataCogdx, aes(x=as.character(cogdx), y=log2(`FCGR2A`+1),color=as.character(cogdx)))+
+#geom_boxplot()+labs(title="",x="", y = "")+ #ylim(c(1.5,3.5))+
+#theme (strip.text= element_text(size=15)) + 
+#theme_bw()+
+#stat_compare_means(comparisons =list(c("1","5")))+
+#scale_color_manual(values = c("SlateBlue","DarkOrchid","SandyBrown","Coral"))+
+#theme(legend.position="none")+ geom_jitter(shape=1, position=position_jitter(0.2))+
+#theme(axis.title.y = element_text(size=rel(1.0)),axis.text.x = element_text(size=rel(1.0)),axis.text.y = element_text(size=rel(1.0)))+
+#facet_grid(~msex)
+#pdf("Graph/Part1/CSF1RInROSMAP.pdf",width=8,height=4)
+#print(t)
+#dev.off()
+
 
 #-----------GSEA between MahysDataset and Control---------------------
 setwd("/Projects/deng/Alzheimer/syn18485175/Manuscript/Microglia")
@@ -825,6 +834,7 @@ MahysDatasetdegMahysDataset<- FemaleInMahysDatasetCtrl %>% dplyr::filter(group =
 ranks<- deframe(MahysDatasetdegMahysDataset)
 FemaleInMahysDatasetCtrl_fgseaRes<- fgseaMultilevel(fgsea_sets, stats = ranks,eps=0)
 
+##pathway cateogry was manully downloaded from KEGG database
 pathwayCategory=read.table("/Projects/deng/Public/GSEA/KEGGPathwayCategory.txt",header=T,sep="\t")
 
 all(MaleInMahysDatasetCtrl_fgseaRes$pathway==FemaleInMahysDatasetCtrl_fgseaRes$pathway) #TRUE
