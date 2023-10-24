@@ -32,8 +32,6 @@ write.table(sampleInfor,file="PhenotypeStatus.txt",sep="\t",quote=F)
 
 sampleInfor$sample=rownames(sampleInfor)
 
-
-
 ##The microglia ratio for each subtype (identify by Green et al.,)
 MicRatio=read.table("MicrogliaRatio.txt",header=T,row.names=1,sep="\t")
 MicRatio$sample=rownames(MicRatio)
@@ -91,19 +89,7 @@ print(g)
 dev.off()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+#Validate the microglia ratio in female LOAD from Na Sun et al., (2023)
 #http://compbio.mit.edu/microglia_states/
 #data was downloaded from https://personal.broadinstitute.org/cboix/sun_victor_et_al_data/ not from syn52293417
 
