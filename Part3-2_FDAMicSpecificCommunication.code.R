@@ -1,6 +1,6 @@
 ### This part was deleted from our manuscript based on the reviewer's suggestion
-# We integrated another snRNA dataset which contains vascular and immune cells to decipher the communication between FDAMic and other cells
-# We detected the cell-cell communication by activating ligands and receptors on FDAMic. We found FDAMic had a strong connection to END, T cells, and other microglia by the higher expression of ligands including B2M, PKM, SPP1, et al.
+### We integrated another snRNA dataset which contains vascular and immune cells to decipher the communication between FDAMic and other cells
+### We detected the cell-cell communication by activating ligands and receptors on FDAMic. We found FDAMic had a strong connection to END, T cells, and other microglia by the higher expression of ligands including B2M, PKM, SPP1, et al.
 
 library(Seurat)
 library(ggplot2)
