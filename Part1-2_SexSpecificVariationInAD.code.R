@@ -159,6 +159,7 @@ scaled_data=scaled_data[order(scaled_data$cluster,scaled_data$pathology.group),]
 write.table(scaled_data,file="Graph/Part1/FemaleCellsRation_Pathology.Group.txt",sep="\t",quote=F,row.names=F)
 
 
+## Sex dependent microglia ratio across various pathology and congnitive impairment 
 
 C13N=data.frame(table(C13$ProjectID))
 TotalN=data.frame(table(MahysDataset$ProjectID))
@@ -186,8 +187,6 @@ wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statues=="Alzheimer","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Alzheimer","Ratio"]) #p-value = 0.197
 wilcox.test(cellNumberInfo[cellNumberInfo$Gender=="Female"&cellNumberInfo$Statues=="Control","Ratio"],cellNumberInfo[cellNumberInfo$Gender=="Male"&cellNumberInfo$Statues=="Control","Ratio"]) #p-value = 0.03872
 
-
-## Sex dependent microglia ratio across various pathology and congnitive impairment 
 C13N=data.frame(table(C13$ProjectID))
 TotalN=data.frame(table(MahysDataset$ProjectID))
 all(C13N$Var1==TotalN$Var1) #should be TRUE
